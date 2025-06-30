@@ -1,3 +1,11 @@
+#
+# ----------------------------------------------------
+# Developed by: Ctgmovies23
+# Telegram Username: @ctgmovies23
+# Channel Link: https://t.me/AllBotUpdatemy
+# ----------------------------------------------------
+#
+
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient, ASCENDING
@@ -270,7 +278,15 @@ async def start(_, msg: Message):
         [InlineKeyboardButton("আপডেট চ্যানেল", url=UPDATE_CHANNEL)],
         [InlineKeyboardButton("অ্যাডমিনের সাথে যোগাযোগ", url="https://t.me/ctgmovies23")]
     ])
-    start_message = await msg.reply_photo(photo=START_PIC, caption="আমাকে মুভির নাম লিখে পাঠান, আমি খুঁজে দেবো।", reply_markup=btns)
+    start_message = await msg.reply_photo(
+        photo=START_PIC,
+        caption="""আমাকে মুভির নাম লিখে পাঠান, আমি খুঁজে দেবো।
+
+Developed by: **Ctgmovies23**
+Telegram: @ctgmovies23
+Channel: [All Bot Update My](https://t.me/AllBotUpdatemy)""", # এখানে আপনার ক্রেডিট যোগ করা হয়েছে
+        reply_markup=btns
+    )
     asyncio.create_task(delete_message_later(start_message.chat.id, start_message.id))
 
 @app.on_message(filters.command("feedback") & filters.private)
@@ -311,10 +327,14 @@ async def broadcast(_, msg: Message):
 @app.on_message(filters.command("stats") & filters.user(ADMIN_IDS))
 async def stats(_, msg: Message):
     stats_msg = await msg.reply(
-        f"মোট ব্যবহারকারী: {users_col.count_documents({})}\n"
-        f"মোট মুভি: {movies_col.count_documents({})}\n"
-        f"মোট ফিডব্যাক: {feedback_col.count_documents({})}\n"
-        f"মোট অনুরোধ: {requests_col.count_documents({})}"
+        f"""মোট ব্যবহারকারী: {users_col.count_documents({})}
+মোট মুভি: {movies_col.count_documents({})}
+মোট ফিডব্যাক: {feedback_col.count_documents({})}
+মোট অনুরোধ: {requests_col.count_documents({})}
+
+Developed by: **Ctgmovies23**
+Telegram: @ctgmovies23
+Channel: [All Bot Update My](https://t.me/AllBotUpdatemy)""" # এখানে আপনার ক্রেডিট যোগ করা হয়েছে
     )
     asyncio.create_task(delete_message_later(stats_msg.chat.id, stats_msg.id))
 
