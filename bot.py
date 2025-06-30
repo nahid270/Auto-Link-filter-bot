@@ -60,13 +60,14 @@ movies_col.create_index([("language", ASCENDING), ("title_clean", ASCENDING)], b
 movies_col.create_index([("views_count", ASCENDING)], background=True)
 print("All other necessary indexes ensured successfully.")
 
-# Ensure the forward_enabled setting exists and is True by default
+# Ensure the protect_forwarding setting exists and is True by default
+# True মানে কন্টেন্ট প্রোটেক্টেড, অর্থাৎ ফরওয়ার্ড করা যাবে না।
 settings_col.update_one(
-    {"key": "forward_enabled"},
+    {"key": "protect_forwarding"},
     {"$setOnInsert": {"value": True}},
     upsert=True
 )
-print("Forwarding setting ensured in database.")
+print("Forwarding protection setting ensured in database.")
 
 
 # Flask App for health check
@@ -210,23 +211,21 @@ async def start(_, msg: Message):
 
     user_last_start_time[user_id] = current_time
 
-    # নতুন মুভি ফরওয়ার্ড করার লজিক
+    # মুভি ফরওয়ার্ড করার লজিক
     if len(msg.command) > 1 and msg.command[1].startswith("watch_"):
-        # ফরওয়ার্ডিং চালু আছে কিনা তা পরীক্ষা করুন
-        forward_setting = settings_col.find_one({"key": "forward_enabled"})
-        if forward_setting and forward_setting.get("value") is False:
-            error_msg = await msg.reply_text("দুঃখিত! বর্তমানে মুভি ফরওয়ার্ডিং বন্ধ আছে।")
-            asyncio.create_task(delete_message_later(error_msg.chat.id, error_msg.id))
-            return # এখানে রিটার্ন করলে মুভি ফরওয়ার্ড হবে না
-
         message_id = int(msg.command[1].replace("watch_", ""))
+        
+        # protect_forwarding সেটিং চেক করুন
+        protect_setting = settings_col.find_one({"key": "protect_forwarding"})
+        # ডিফল্ট True ধরে নেওয়া হয়েছে যদি সেটিং না থাকে, অর্থাৎ কন্টেন্ট প্রটেক্টেড থাকবে।
+        should_protect = protect_setting.get("value", True) if protect_setting else True
+
         try:
-            # app.copy_message ব্যবহার করা হয়েছে, এতে কন্টেন্ট প্রটেকশন বজায় থাকে
             copied_message = await app.copy_message(
                 chat_id=msg.chat.id,        # যেখানে মেসেজটি পাঠানো হবে (ইউজারের চ্যাট)
                 from_chat_id=CHANNEL_ID,    # যেখান থেকে মেসেজটি কপি করা হবে (আপনার চ্যানেল)
                 message_id=message_id,      # মূল মেসেজের আইডি
-                protect_content=True        # কন্টেন্ট সুরক্ষা নিশ্চিত করতে
+                protect_content=should_protect # protect_content এখন ডাটাবেস সেটিং থেকে আসবে
             )
             
             movie_data = movies_col.find_one({"message_id": message_id})
@@ -335,22 +334,25 @@ async def notify_command(_, msg: Message):
     reply_msg = await msg.reply(f"✅ গ্লোবাল নোটিফিকেশন {status} করা হয়েছে!")
     asyncio.create_task(delete_message_later(reply_msg.chat.id, reply_msg.id))
 
-# নতুন ফরওয়ার্ডিং টগল কমান্ড
+# ফরওয়ার্ডিং প্রোটেকশন টগল কমান্ড
 @app.on_message(filters.command("forward_toggle") & filters.user(ADMIN_IDS))
-async def toggle_forward(_, msg: Message):
+async def toggle_forward_protection(_, msg: Message):
     if len(msg.command) != 2 or msg.command[1] not in ["on", "off"]:
-        error_msg = await msg.reply("ব্যবহার: /forward_toggle on অথবা /forward_toggle off")
+        error_msg = await msg.reply("ব্যবহার: /forward_toggle on (ফরওয়ার্ডিং বন্ধ) অথবা /forward_toggle off (ফরওয়ার্ডিং চালু)")
         asyncio.create_task(delete_message_later(error_msg.chat.id, error_msg.id))
         return
     
-    new_value = True if msg.command[1] == "on" else False
+    # "on" মানে প্রোটেকশন চালু, অর্থাৎ ফরওয়ার্ড করা যাবে না (protect_content=True)
+    # "off" মানে প্রোটেকশন বন্ধ, অর্থাৎ ফরওয়ার্ড করা যাবে (protect_content=False)
+    new_value_for_protect_content = True if msg.command[1] == "on" else False
+    
     settings_col.update_one(
-        {"key": "forward_enabled"},
-        {"$set": {"value": new_value}},
+        {"key": "protect_forwarding"},
+        {"$set": {"value": new_value_for_protect_content}},
         upsert=True
     )
-    status = "চালু" if new_value else "বন্ধ"
-    reply_msg = await msg.reply(f"✅ মুভি ফরওয়ার্ডিং {status} করা হয়েছে!")
+    status = "বন্ধ" if new_value_for_protect_content else "চালু"
+    reply_msg = await msg.reply(f"✅ ইউজারদের জন্য মুভি ফরওয়ার্ডিং {status} করা হয়েছে! (প্রোটেকশন {'চালু' if new_value_for_protect_content else 'বন্ধ'})")
     asyncio.create_task(delete_message_later(reply_msg.chat.id, reply_msg.id))
 
 
@@ -567,10 +569,10 @@ async def search(_, msg: Message):
         m = await msg.reply("🔍 সরাসরি মিলে যায়নি, তবে কাছাকাছি কিছু পাওয়া গেছে:", reply_markup=InlineKeyboardMarkup(buttons), quote=True)
         asyncio.create_task(delete_message_later(m.chat.id, m.id))
     else:
-        Google_Search_url = "https://www.google.com/search?q=" + urllib.parse.quote(query)
+        Google Search_url = "https://www.google.com/search?q=" + urllib.parse.quote(query)
         
         request_button = InlineKeyboardButton("এই মুভির জন্য অনুরোধ করুন", callback_data=f"request_movie_{user_id}_{urllib.parse.quote_plus(query)}")
-        google_button_row = [InlineKeyboardButton("গুগলে সার্চ করুন", url=Google_Search_url)]
+        google_button_row = [InlineKeyboardButton("গুগলে সার্চ করুন", url=Google Search_url)]
         
         reply_markup_for_no_result = InlineKeyboardMarkup([
             google_button_row,
